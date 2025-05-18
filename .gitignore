@@ -1,0 +1,17 @@
+.idea/
+__pycache__/
+.DS_Store
+
+*.csv
+*.pkl
+
+# Coverage
+.coverage
+.coverage*
+htmlcov
+
+tests/**/*.json
+
+dist
+
+*.lp
