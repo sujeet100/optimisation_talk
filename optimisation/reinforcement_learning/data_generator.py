@@ -98,11 +98,19 @@ opt_params = {
 }
 
 # --- Save to CSV ---
-df_aircraft.to_csv("./data_sim/aircraft_data.csv", index=False)
-df_pilots.to_csv("./data_sim/pilot_data.csv", index=False)
-df_crew.to_csv("./data_sim/crew_data.csv", index=False)
-df_flights.to_csv("./data_sim/flight_data.csv", index=False)
-with open("./data_sim/opt_params.json", "w") as f:
+# df_aircraft.to_csv("./data_sim/aircraft_data.csv", index=False)
+# df_pilots.to_csv("./data_sim/pilot_data.csv", index=False)
+# df_crew.to_csv("./data_sim/crew_data.csv", index=False)
+# df_flights.to_csv("./data_sim/flight_data.csv", index=False)
+# with open("./data_sim/opt_params.json", "w") as f:
+#     json.dump(opt_params, f)
+
+# --- Eval data
+df_aircraft.to_csv("./data_sim_eval/aircraft_data.csv", index=False)
+df_pilots.to_csv("./data_sim_eval/pilot_data.csv", index=False)
+df_crew.to_csv("./data_sim_eval/crew_data.csv", index=False)
+df_flights.to_csv("./data_sim_eval/flight_data.csv", index=False)
+with open("./data_sim_eval/opt_params.json", "w") as f:
     json.dump(opt_params, f)
 
 # --- Display Summary ---

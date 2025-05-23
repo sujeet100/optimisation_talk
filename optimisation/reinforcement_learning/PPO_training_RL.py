@@ -8,7 +8,9 @@ from flight_scheduling_env import FlightSchedulingEnv
 from prep_data_for_RL import prep_data
 
 # Initialize environment
-data = prep_data()
+csv_files = ["./data_sim/aircraft_data.csv", "./data_sim/pilot_data.csv", "./data_sim/crew_data.csv", "./data_sim/flight_data.csv"]
+json_file = "./data_sim/opt_params.json"
+data = prep_data(csv_files, json_file)
 env = DummyVecEnv([lambda: FlightSchedulingEnv(data)])
 
 # Optional: check the custom environment

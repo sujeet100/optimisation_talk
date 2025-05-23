@@ -1,71 +1,66 @@
 import numpy as np
-import matplotlib.pyplot as plt
+import pandas as pd
 from stable_baselines3 import PPO
-from flight_scheduling_env import FlightSchedulingEnv  # import your environment
+from stable_baselines3.common.vec_env import DummyVecEnv
+from flight_scheduling_env import FlightSchedulingEnv
+from prep_data_for_RL import prep_data
+import matplotlib.pyplot as plt
 
-# Load the trained model
+# Decode action from flat MultiDiscrete array
+def decode_actions(action_flat, num_flights):
+    action_array = np.array(action_flat).reshape(num_flights, 4)
+    return action_array   # [ [w_i, aircraft, pilot, crew], ... ]
+
+# Load data
+csv_files = ["./data_sim_eval/aircraft_data.csv", "./data_sim_eval/pilot_data.csv", "./data_sim_eval/crew_data.csv", "./data_sim_eval/flight_data.csv"]
+json_file = "./data_sim_eval/opt_params.json"
+data = prep_data(csv_files, json_file)
+
+# Load trained model
 model = PPO.load("ppo_flight_scheduler")
 
-# Load or define the same environment data used during training
-data = {
-    "num_flights": 100,
-    "num_aircraft": 5,
-    "num_pilots": 10,
-    "num_crew": 10,
-    "budget_cap": 50000,
-    "max_allowed_avg_emission": 1000,
-    "flight_revenue": np.random.randint(1000, 5000, size=100),
-    "flight_priority": np.random.rand(100),
-    "flight_duration": np.random.randint(1, 5, size=100),
-    "op_cost_per_km": np.random.rand(5) * 10,
-    "carbon_emission_gm_per_km": np.random.rand(5) * 100,
-    "fuel_efficiency_km_per_kg": np.random.rand(5) * 2,
-    "salary_pilot": np.random.rand(10) * 50,
-    "logged_hours_pilot": np.zeros(10),
-    "salary_crew": np.random.rand(10) * 30,
-    "logged_hours_crew": np.zeros(10),
-    "weather_based_fuel_degradation_factor": np.random.rand(100) + 1,
-    "weather_based_emission_amplification_factor": np.random.rand(100) + 1,
-    "max_hours_pilot": np.ones(10) * 8,
-    "max_hours_crew": np.ones(10) * 8,
-}
+# Create evaluation environment
+eval_env = DummyVecEnv([lambda: FlightSchedulingEnv(data)])
 
-# Create env instance
-env = FlightSchedulingEnv(data)
-obs, _ = env.reset()
+# Reset environment
+obs = eval_env.reset()
 
-# Evaluate
-obs_list, rewards, emissions, costs, budget_violations, emission_violations = [], [], [], [], [], []
+# Run evaluation episodes
+n_eval_episodes = 10
+total_rewards = []
 
-obs = obs.astype(np.float32)
-action, _ = model.predict(obs, deterministic=True)
-obs, reward, terminated, truncated, info = env.step(action)
+for episode in range(n_eval_episodes):
+    obs = eval_env.reset()
+    done = False
+    episode_reward = 0
 
-# Store results
-obs_list.append(obs)
-rewards.append(reward)
-emissions.append(info["emissions"])
-costs.append(info["total_cost"])
-budget_violations.append(info["budget_overrun"])
-emission_violations.append(info["emission_violation"])
+    while not done:
+        action, _ = model.predict(obs, deterministic=True)
+        obs, reward, done, info = eval_env.step(action)
 
-# Visualize
-plt.figure(figsize=(12, 8))
-plt.subplot(2, 2, 1)
-plt.title("Reward")
-plt.bar(["Reward"], rewards)
+        decoded = decode_actions(action[0], data["num_flights"])
+        assignments = []
 
-plt.subplot(2, 2, 2)
-plt.title("Emissions")
-plt.bar(["Emissions"], emissions)
+        for i, (w, a_idx, p_idx, c_idx) in enumerate(decoded):
+            if w == 1:
+                assignments.append({
+                    "Flight": i,
+                    "Aircraft": a_idx,
+                    "Pilot": p_idx,
+                    "Crew": c_idx
+                })
+        df_assignments = pd.DataFrame(assignments)
 
-plt.subplot(2, 2, 3)
-plt.title("Total Cost")
-plt.bar(["Cost"], costs)
+        episode_reward += reward[0]
+        done = done[0]
 
-plt.subplot(2, 2, 4)
-plt.title("Constraint Violations")
-plt.bar(["Budget Overrun", "Emission Violation"], [budget_violations[0], emission_violations[0]])
+        # Optionally log detailed info
+        # print(f"[Episode {episode + 1}] Step Reward: {reward[0]} | Info: {info[0]}")
 
-plt.tight_layout()
-plt.show()
+    total_rewards.append(episode_reward)
+    # print(f"[Episode {episode + 1}] Total Reward: {episode_reward}")
+
+# Summary
+print("\nEvaluation Summary")
+print(f"Average Reward: {np.mean(total_rewards):.2f}")
+print(f"Reward Std Dev : {np.std(total_rewards):.2f}")
