@@ -10,10 +10,14 @@ python = "^3.11"
 pulp = "^3.1.1"
 pandas = "^2.2.3"
 prettytable = "^3.16.0"
+<<<<<<< Updated upstream
 gym = "^0.26.2"
 stable-baselines3 = "^2.6.0"
 numpy = "^2.2.6"
 seaborn = "^0.13.2"
+=======
+leap-ec = "^0.8.2"
+>>>>>>> Stashed changes
 
 
 [build-system]
