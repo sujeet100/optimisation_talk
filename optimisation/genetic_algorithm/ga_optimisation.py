@@ -3,6 +3,7 @@ import random
 import matplotlib.pyplot as plt
 from leap_ec import Individual
 from leap_ec.decoder import IdentityDecoder
+from visualizations import visualize_solution
 
 from genetic_algorithm.data_generator import simulate_data
 
@@ -83,7 +84,7 @@ class FlightSchedulingProblem:
 
         # Calculate objective function components
         total_revenue = sum(self.flights['revenue'])
-        total_operating_cost = sum(self.aircraft['cost'][aircraft_assignments[i]] for i in range(self.n_flights))
+        total_operating_cost = sum(self.aircraft['cost'][aircraft_assignments[i]] * self.flights["duration"][i] for i in range(self.n_flights))
 
         # Calculate personnel costs
         pilot_hours = [0] * self.n_pilots
@@ -119,7 +120,8 @@ class FlightSchedulingProblem:
 
         # Constraint 5: Average emission constraint
         total_emissions = sum(self.aircraft['emission_rate'][aircraft_assignments[i]] *
-                              self.flights['duration'][i] for i in range(self.n_flights))
+                              (self.flights['duration'][i] ** self.constraints["emission_exponent"])
+                              for i in range(self.n_flights))
         avg_emissions = total_emissions / self.n_flights if self.n_flights > 0 else 0
 
         if avg_emissions > self.constraints['avg_emission_max']:
@@ -127,18 +129,24 @@ class FlightSchedulingProblem:
 
         # Constraint 6: Budget constraint (soft)
         if total_cost > self.constraints['budget']:
-            penalties += self.constraints['lambda_budget'] * (total_cost - self.constraints['budget'])
+            budget_overrun = max(0, total_cost - self.constraints['budget'])
+            alpha = self.constraints['lambda_budget']
+            penalties += ((alpha + 1) * (budget_overrun)) / (alpha * budget_overrun + 1)
 
         # Constraint 7: Working hours constraints (soft)
         for p_idx in range(self.n_pilots):
             total_pilot_hours = self.pilots['logged_hours'][p_idx] + pilot_hours[p_idx]
             if total_pilot_hours > self.constraints['max_hours_pilot']:
-                penalties += self.constraints['lambda_work'] * (total_pilot_hours - self.constraints['max_hours_pilot'])
+                beta = self.constraints['lambda_work']
+                pilot_hours_over = total_pilot_hours - self.constraints['max_hours_pilot']
+                penalties +=  ((beta + 1) * pilot_hours_over) / (beta * pilot_hours_over + 1)
 
         for c_idx in range(self.n_crew):
             total_crew_hours = self.crew['logged_hours'][c_idx] + crew_hours[c_idx]
             if total_crew_hours > self.constraints['max_hours_crew']:
-                penalties += self.constraints['lambda_work'] * (total_crew_hours - self.constraints['max_hours_crew'])
+                beta = self.constraints['lambda_work']
+                crew_hours_over = total_crew_hours - self.constraints['max_hours_crew']
+                penalties += ((beta + 1) * crew_hours_over) / (beta * crew_hours_over + 1)
 
         # Hard constraint penalties for duplicates within flights
         for i in range(self.n_flights):
@@ -219,9 +227,10 @@ def run_flight_scheduling_optimization():
         'budget': 50000,  # B
         'max_hours_pilot': 8,  # Hp
         'max_hours_crew': 8,  # Hc
+        'emission_exponent': 1.5,
         'avg_emission_max': 1000,  # Eavg_max
         'lambda_budget': 0.5,  # Budget penalty weight
-        'lambda_work': 10  # Work hours penalty weight
+        'lambda_work': 0.5  # Work hours penalty weight
     }
 
     global problem
@@ -322,3 +331,15 @@ def run_flight_scheduling_optimization():
 # Run the optimization
 if __name__ == "__main__":
     best_solution, fitness_history = run_flight_scheduling_optimization()
+
+    genome = best_solution.genome
+    print(f"\nBest solution assignments:")
+    for i in range(problem.n_flights):
+        base_idx = i * 6
+        aircraft = genome[base_idx]
+        pilots = [genome[base_idx + 1], genome[base_idx + 2]]
+        crew = [genome[base_idx + 3], genome[base_idx + 4], genome[base_idx + 5]]
+        print(f"Flight {i + 1}: Aircraft {aircraft}, Pilots {pilots}, Crew {crew}")
+
+    # Visualize results
+    visualize_solution(best_solution, problem, fitness_history)
