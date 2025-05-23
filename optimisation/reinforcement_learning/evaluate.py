@@ -5,39 +5,7 @@ from flight_scheduling_env import FlightSchedulingEnv
 from prep_data_for_RL import prep_data
 import matplotlib.pyplot as plt
 
-def decode_action(flat_action, num_flights):
-    # Each flight has: [w, aircraft, pilot1, pilot2, crew1, crew2, crew3]
-    return np.array(flat_action).reshape(num_flights, 7)
-
-def visualize_assignments(decoded_actions):
-    num_flights = decoded_actions.shape[0]
-    assigned_flights = np.where(decoded_actions[:, 0] == 1)[0]
-
-    aircraft = decoded_actions[assigned_flights, 1]
-    pilots = decoded_actions[assigned_flights, 2:4]
-    crew = decoded_actions[assigned_flights, 4:7]
-
-    fig, axs = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
-
-    axs[0].scatter(assigned_flights, aircraft, c='blue')
-    axs[0].set_ylabel("Aircraft ID")
-    axs[0].set_title("Aircraft Assignments")
-
-    for i in range(2):
-        axs[1].scatter(assigned_flights, pilots[:, i], label=f"Pilot {i+1}")
-    axs[1].set_ylabel("Pilot ID")
-    axs[1].legend()
-    axs[1].set_title("Pilot Assignments")
-
-    for i in range(3):
-        axs[2].scatter(assigned_flights, crew[:, i], label=f"Crew {i+1}")
-    axs[2].set_ylabel("Crew ID")
-    axs[2].set_xlabel("Flight Index")
-    axs[2].legend()
-    axs[2].set_title("Crew Assignments")
-
-    plt.tight_layout()
-    plt.show()
+from visualizations import decode_action, visualize_assignments, crew_overwork, budget_visual, emission_visual
 
 # Load data and environment
 csv_files = [
@@ -62,7 +30,7 @@ total_rewards = []
 all_infos = []
 
 # Evaluation loop
-for episode in range(10):
+for episode in range(100):
     obs = eval_env.reset()
     done = False
     ep_reward = 0
@@ -91,9 +59,22 @@ for episode in range(10):
 
 decoded_actions = decode_action(raw_action, num_flights=50)
 visualize_assignments(decoded_actions)
+crew_overwork(all_infos)
+budget_visual(all_infos)
+emission_visual(all_infos, data)
+
 
 # Summary statistics
 print("\n=== Evaluation Summary ===")
 print(f"Average Reward: {np.mean(total_rewards):.2f}")
 print(f"Min Reward: {np.min(total_rewards):.2f}")
 print(f"Max Reward: {np.max(total_rewards):.2f}")
+
+plt.figure(figsize=(10, 4))
+plt.plot(total_rewards, marker='o')
+plt.xlabel("Episode")
+plt.ylabel("Total Episode Reward")
+plt.title("Evaluation Episode Rewards")
+plt.grid(True)
+plt.tight_layout()
+plt.show()
