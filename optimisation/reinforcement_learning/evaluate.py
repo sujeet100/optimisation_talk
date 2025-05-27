@@ -22,7 +22,7 @@ eval_env = DummyVecEnv([lambda: FlightSchedulingEnv(data)])
 num_flights = data["num_flights"]
 
 # Load trained model
-model = PPO.load("ppo_flight_scheduler_visual")
+model = PPO.load("ppo_flight_scheduler")
 
 # Reset environment
 obs = eval_env.reset()
