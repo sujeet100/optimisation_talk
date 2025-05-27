@@ -1,4 +1,5 @@
 import os
+import numpy as np
 
 import matplotlib.pyplot as plt
 from stable_baselines3 import PPO
@@ -49,6 +50,16 @@ plt.xlabel("Episodes")
 plt.ylabel("Episode Reward")
 plt.title("PPO Training Reward Over Time")
 plt.grid()
+plt.show()
+
+rewards = np.array(y)
+moving_avg = np.convolve(rewards, np.ones(100)/100, mode='valid')
+
+plt.plot(moving_avg)
+plt.title("Moving Average of PPO Rewards")
+plt.xlabel("Episodes")
+plt.ylabel("Smoothed Reward")
+plt.grid(True)
 plt.show()
 
 print("Finished training, Success!")
