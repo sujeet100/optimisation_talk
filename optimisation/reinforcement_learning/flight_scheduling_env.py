@@ -15,9 +15,15 @@ class FlightSchedulingEnv(gym.Env):
         self.emission_limit = data["max_allowed_avg_emission"]
 
         # Action space: [w_i, aircraft, pilot1, pilot2, crew1, crew2, crew3] * num_flights
-        self.action_space = spaces.MultiDiscrete(
-            [2, self.num_aircraft, self.num_pilots, self.num_pilots, self.num_crew, self.num_crew, self.num_crew] * self.num_flights
-        )
+        self.action_space = spaces.MultiDiscrete([
+            2,  # w_i: 0 or 1 (schedule flight)
+            self.num_aircraft,  # aircraft index
+            self.num_pilots,  # pilot 1 index
+            self.num_pilots,  # pilot 2 index
+            self.num_crew,  # crew 1 index
+            self.num_crew,  # crew 2 index
+            self.num_crew  # crew 3 index
+        ])
 
         # Observation space: flight features + budget + pilot hours + crew hours + emissions
         obs_dim = (
@@ -32,77 +38,150 @@ class FlightSchedulingEnv(gym.Env):
         self.reset()
 
     def step(self, action):
-        alpha = 5
-        beta = 5
-        a = 0.3
-        b = 1.5
+        # Make this a multi-step environment
+        if not hasattr(self, 'current_flight'):
+            self.current_flight = 0
+            self.total_revenue = 0
+            self.total_cost = 0
+            self.total_emissions = 0
+            self.pilot_hours = np.array(self.data["logged_hours_pilot"]).copy()
+            self.crew_hours = np.array(self.data["logged_hours_crew"]).copy()
+            self.used_pilots = set()
+            self.used_crew = set()
+            self.scheduled_flights = np.zeros(self.num_flights)  # Track scheduled flights
 
-        action = np.array(action).reshape(self.num_flights, 7)
+        # Get action for current flight
+        flight_idx = self.current_flight
+        # Parse action (ensure it's exactly 7 elements)
+        if isinstance(action, np.ndarray):
+            if action.shape == (7,):
+                w_i, a_idx, p1_idx, p2_idx, c1_idx, c2_idx, c3_idx = action
+            else:
+                raise ValueError(f"Expected action shape (7,), got {action.shape}")
+        else:
+            action_array = np.array(action)
+            if action_array.size == 7:
+                w_i, a_idx, p1_idx, p2_idx, c1_idx, c2_idx, c3_idx = action_array.flatten()
+            else:
+                raise ValueError(f"Expected 7 action elements, got {action_array.size}")
 
-        Ri, Pi, Di = self.data["flight_revenue"], self.data["flight_priority"], self.data["flight_duration"]
-        Cj, Ej, Fj = self.data["op_cost_per_km"], self.data["carbon_emission_gm_per_km"], self.data["fuel_efficiency_km_per_kg"]
-        Sm_p, Hm_p = self.data["salary_pilot"], self.data["logged_hours_pilot"]
-        Sn_c, Hn_c = self.data["salary_crew"], self.data["logged_hours_crew"]
-        phi, omega = self.data["weather_based_fuel_degradation_factor"], self.data["weather_based_emission_amplification_factor"]
-        Hp, Hc = self.data["max_hours_pilot"], self.data["max_hours_crew"]
+        # Convert to integers for indexing
+        w_i = int(w_i)
+        a_idx = int(a_idx)
+        p1_idx = int(p1_idx)
+        p2_idx = int(p2_idx)
+        c1_idx = int(c1_idx)
+        c2_idx = int(c2_idx)
+        c3_idx = int(c3_idx)
 
-        max_revenue = np.sum(Ri)
-        total_cost = 0
-        total_emissions = 0
-        revenue = 0
-        pilot_hours = np.array(Hm_p)
-        crew_hours = np.array(Hn_c)
+        # Get flight data
+        Ri = self.data["flight_revenue"][flight_idx]
+        Pi = self.data["flight_priority"][flight_idx]
+        Di = self.data["flight_duration"][flight_idx]
+        Cj = self.data["op_cost_per_km"][a_idx]
+        Ej = self.data["carbon_emission_gm_per_km"][a_idx]
+        phi = self.data["weather_based_fuel_degradation_factor"][flight_idx]
+        omega = self.data["weather_based_emission_amplification_factor"][flight_idx]
+        Sm_p = self.data["salary_pilot"]
+        Sn_c = self.data["salary_crew"]
+        Hp = self.data["max_hours_pilot"]
+        Hc = self.data["max_hours_crew"]
+
+        reward = 0
+
+        if w_i == 1:  # Schedule this flight
+            self.scheduled_flights[flight_idx] = 1
+            # Calculate base revenue
+            flight_revenue = Ri * (1 + 0.3 * Pi)
+
+            # Constraint violations with smooth penalties instead of hard cuts
+            constraint_penalty = 0
+
+            # Pilot assignment constraints (smooth penalty)
+            if len({p1_idx, p2_idx}) < 2:
+                constraint_penalty += 0.3 * flight_revenue  # 30% revenue penalty
+            if p1_idx in self.used_pilots or p2_idx in self.used_pilots:
+                constraint_penalty += 0.2 * flight_revenue  # 20% revenue penalty
+
+            # Crew assignment constraints (smooth penalty)
+            if len({c1_idx, c2_idx, c3_idx}) < 3:
+                constraint_penalty += 0.3 * flight_revenue
+            if any(c in self.used_crew for c in [c1_idx, c2_idx, c3_idx]):
+                constraint_penalty += 0.2 * flight_revenue
+
+            # Calculate costs
+            flight_cost = (Cj * Di * phi +
+                           Sm_p[p1_idx] * Di + Sm_p[p2_idx] * Di +
+                           Sn_c[c1_idx] * Di + Sn_c[c2_idx] * Di + Sn_c[c3_idx] * Di)
+
+            flight_emissions = Ej * omega * (Di ** 1.5)
+
+            # Update tracking
+            self.total_revenue += flight_revenue
+            self.total_cost += flight_cost
+            self.total_emissions += flight_emissions
+            self.used_pilots.update([p1_idx, p2_idx])
+            self.used_crew.update([c1_idx, c2_idx, c3_idx])
+            self.pilot_hours[p1_idx] += Di
+            self.pilot_hours[p2_idx] += Di
+            self.crew_hours[c1_idx] += Di
+            self.crew_hours[c2_idx] += Di
+            self.crew_hours[c3_idx] += Di
+
+            # Immediate reward for this flight (normalize to reasonable scale)
+            reward = (flight_revenue - flight_cost) / 1000.0 - constraint_penalty / 1000.0
+
+            # Small penalties for resource usage to encourage efficiency
+            pilot_usage_penalty = 0.01 * np.sum(np.maximum(0, self.pilot_hours - Hp) / Hp)
+            crew_usage_penalty = 0.01 * np.sum(np.maximum(0, self.crew_hours - Hc)/ Hc)
+            reward -= pilot_usage_penalty + crew_usage_penalty
+
+        # Move to next flight
+        self.current_flight += 1
+        terminated = self.current_flight >= self.num_flights
+
+        if terminated:
+            # Final episode reward based on overall performance
+            budget_penalty = max(0, (self.total_cost - self.budget_cap) / self.budget_cap) * 2.0
+            emission_penalty = max(0, (self.total_emissions - self.emission_limit * self.num_flights) /
+                                   (self.emission_limit * self.num_flights)) * 2.0
+
+            final_reward = (self.total_revenue / 10000.0 -
+                            budget_penalty - emission_penalty)
+            reward += final_reward
+
+            # Reset for next episode
+            self.current_flight = 0
+
+        # Update state representation
+        self._update_state()
+
+        truncated = False
+        info = {
+            "revenue": getattr(self, 'total_revenue', 0),
+            "total_cost": getattr(self, 'total_cost', 0),
+            "emissions": getattr(self, 'total_emissions', 0),
+            "current_flight": self.current_flight,
+        }
+
+        return self.state, reward, terminated, truncated, info
+
+    def _update_state(self):
+        """Update state representation matching original structure"""
+        # Create scheduled flags for all flights (0 for future flights, actual values for processed ones)
         scheduled_flags = np.zeros(self.num_flights)
-        used_pilots = set()
-        used_crew = set()
-
-        for i, (w_i, a_idx, p1_idx, p2_idx, c1_idx, c2_idx, c3_idx) in enumerate(action):
-            if w_i == 1:
-                # Hard constraints: 2 distinct pilots, 3 distinct crew
-                valid_assignment = 1
-                if len({p1_idx, p2_idx}) < 2 or len({c1_idx, c2_idx, c3_idx}) < 3:
-                    valid_assignment *= 0.5
-
-                # No reuse of pilots or crew
-                if any(p in used_pilots for p in [p1_idx, p2_idx]) or any(c in used_crew for c in [c1_idx, c2_idx, c3_idx]):
-                    valid_assignment *= 0.5
-
-                used_pilots.update([p1_idx, p2_idx])
-                used_crew.update([c1_idx, c2_idx, c3_idx])
+        if hasattr(self, 'processed_flights'):
+            for i in self.processed_flights:
                 scheduled_flags[i] = 1
-                revenue += valid_assignment * Ri[i] * (1 + a * Pi[i])
-                total_cost += Cj[a_idx] * Di[i] * phi[i]
-                total_cost += Sm_p[p1_idx] * Di[i] + Sm_p[p2_idx] * Di[i]
-                total_cost += Sn_c[c1_idx] * Di[i] + Sn_c[c2_idx] * Di[i] + Sn_c[c3_idx] * Di[i]
-                pilot_hours[p1_idx] += Di[i]
-                pilot_hours[p2_idx] += Di[i]
-                crew_hours[c1_idx] += Di[i]
-                crew_hours[c2_idx] += Di[i]
-                crew_hours[c3_idx] += Di[i]
-                total_emissions += Ej[a_idx] * omega[i] * (Di[i] ** b)
 
-        budget_overrun = max(0, total_cost - self.budget_cap)
-        penalty_budget = (budget_overrun / self.budget_cap) ** 2
+        # Get flight data
+        Ri = self.data["flight_revenue"]
+        Pi = self.data["flight_priority"]
+        Di = self.data["flight_duration"]
+        phi = self.data["weather_based_fuel_degradation_factor"]
+        omega = self.data["weather_based_emission_amplification_factor"]
 
-        emission_violation = max(0, total_emissions - self.emission_limit * self.num_flights)
-        penalty_emission = emission_violation / (self.emission_limit * self.num_flights + 1e-6)
-
-        pilot_hours_over = np.maximum(0, pilot_hours - Hp)
-        crew_hours_over = np.maximum(0, crew_hours - Hc)
-        largest_pilot_hours_over = np.mean(pilot_hours_over)
-        largest_crew_hours_over = np.mean(crew_hours_over)
-        penalty_pilot = ((beta + 1) * largest_pilot_hours_over) / (beta * largest_pilot_hours_over + 1)
-        penalty_crew = ((beta + 1) * largest_crew_hours_over) / (beta * largest_crew_hours_over + 1)
-
-        normalized_revenue = revenue / max_revenue
-
-        reward = 5 * normalized_revenue - (
-                1.0 * penalty_budget +
-                1.0 * penalty_emission +
-                0.5 * penalty_pilot +
-                0.5 * penalty_crew
-        )
-
+        # Flight features (matching original: 6 features * num_flights)
         flight_features = np.stack([
             scheduled_flags,
             Ri,
@@ -110,33 +189,37 @@ class FlightSchedulingEnv(gym.Env):
             Di,
             phi,
             omega
-        ], axis=1).flatten()
+        ], axis=1).flatten()  # Shape: (num_flights * 6,)
 
-        pilot_hour_state = np.clip((Hp - pilot_hours) / Hp, 0, 1)
-        crew_hour_state = np.clip((Hc - crew_hours) / Hc, 0, 1)
-        budget_state = np.array([(self.budget_cap - total_cost) / self.budget_cap])
-        emission_state = np.array([total_emissions / (self.emission_limit * self.num_flights)])
+        # Resource states
+        Hp = self.data["max_hours_pilot"]
+        Hc = self.data["max_hours_crew"]
 
+        pilot_hour_state = np.clip((Hp - getattr(self, 'pilot_hours', np.array(self.data["logged_hours_pilot"]))) / Hp,
+                                   0, 1)
+        crew_hour_state = np.clip((Hc - getattr(self, 'crew_hours', np.array(self.data["logged_hours_crew"]))) / Hc, 0,
+                                  1)
+
+        budget_state = np.array([(self.budget_cap - getattr(self, 'total_cost', 0)) / self.budget_cap])
+        emission_state = np.array([getattr(self, 'total_emissions', 0) / (self.emission_limit * self.num_flights)])
+
+        # Combine all state components
         self.state = np.concatenate([
-            flight_features,
-            budget_state,
-            pilot_hour_state,
-            crew_hour_state,
-            emission_state
+            flight_features,  # num_flights * 6 dimensions
+            budget_state,  # 1 dimension
+            pilot_hour_state,  # num_pilots dimensions
+            crew_hour_state,  # num_crew dimensions
+            emission_state  # 1 dimension
         ]).astype(np.float32)
 
-        terminated = True
-        truncated = False
-        info = {
-            "revenue": revenue,
-            "total_cost": total_cost,
-            "budget_overrun": budget_overrun,
-            "emissions": total_emissions,
-            "emission_violation": emission_violation,
-            "pilot_hours_over": pilot_hours_over.tolist(),
-            "crew_hours_over": crew_hours_over.tolist()
-        }
-        return self.state, reward, terminated, truncated, info
+        # Debug: Print actual shape to verify
+        print(f"State shape: {self.state.shape}, Expected: (612,)")
+        if self.state.shape[0] != 612:
+            print(f"Flight features: {flight_features.shape}")
+            print(f"Budget state: {budget_state.shape}")
+            print(f"Pilot hour state: {pilot_hour_state.shape}")
+            print(f"Crew hour state: {crew_hour_state.shape}")
+            print(f"Emission state: {emission_state.shape}")
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
