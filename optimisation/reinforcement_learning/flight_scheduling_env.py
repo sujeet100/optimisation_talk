@@ -32,8 +32,8 @@ class FlightSchedulingEnv(gym.Env):
         self.reset()
 
     def step(self, action):
-        alpha = 0.5
-        beta = 0.5
+        alpha = 5
+        beta = 5
         a = 0.3
         b = 1.5
 
@@ -46,6 +46,7 @@ class FlightSchedulingEnv(gym.Env):
         phi, omega = self.data["weather_based_fuel_degradation_factor"], self.data["weather_based_emission_amplification_factor"]
         Hp, Hc = self.data["max_hours_pilot"], self.data["max_hours_crew"]
 
+        max_revenue = np.sum(Ri)
         total_cost = 0
         total_emissions = 0
         revenue = 0
@@ -58,17 +59,18 @@ class FlightSchedulingEnv(gym.Env):
         for i, (w_i, a_idx, p1_idx, p2_idx, c1_idx, c2_idx, c3_idx) in enumerate(action):
             if w_i == 1:
                 # Hard constraints: 2 distinct pilots, 3 distinct crew
+                valid_assignment = 1
                 if len({p1_idx, p2_idx}) < 2 or len({c1_idx, c2_idx, c3_idx}) < 3:
-                    continue
+                    valid_assignment *= 0.5
 
                 # No reuse of pilots or crew
                 if any(p in used_pilots for p in [p1_idx, p2_idx]) or any(c in used_crew for c in [c1_idx, c2_idx, c3_idx]):
-                    continue
+                    valid_assignment *= 0.5
 
                 used_pilots.update([p1_idx, p2_idx])
                 used_crew.update([c1_idx, c2_idx, c3_idx])
                 scheduled_flags[i] = 1
-                revenue += Ri[i] * (1 + a * Pi[i])
+                revenue += valid_assignment * Ri[i] * (1 + a * Pi[i])
                 total_cost += Cj[a_idx] * Di[i] * phi[i]
                 total_cost += Sm_p[p1_idx] * Di[i] + Sm_p[p2_idx] * Di[i]
                 total_cost += Sn_c[c1_idx] * Di[i] + Sn_c[c2_idx] * Di[i] + Sn_c[c3_idx] * Di[i]
@@ -80,19 +82,26 @@ class FlightSchedulingEnv(gym.Env):
                 total_emissions += Ej[a_idx] * omega[i] * (Di[i] ** b)
 
         budget_overrun = max(0, total_cost - self.budget_cap)
-        penalty_budget = ((alpha + 1) * (budget_overrun)) / (alpha * budget_overrun + 1)
+        penalty_budget = (budget_overrun / self.budget_cap) ** 2
 
         emission_violation = max(0, total_emissions - self.emission_limit * self.num_flights)
-        penalty_emission = 1e3 if emission_violation > 0 else 0
+        penalty_emission = emission_violation / (self.emission_limit * self.num_flights + 1e-6)
 
         pilot_hours_over = np.maximum(0, pilot_hours - Hp)
         crew_hours_over = np.maximum(0, crew_hours - Hc)
-        largest_pilot_hours_over = np.max(pilot_hours_over)
-        largest_crew_hours_over = np.max(crew_hours_over)
+        largest_pilot_hours_over = np.mean(pilot_hours_over)
+        largest_crew_hours_over = np.mean(crew_hours_over)
         penalty_pilot = ((beta + 1) * largest_pilot_hours_over) / (beta * largest_pilot_hours_over + 1)
         penalty_crew = ((beta + 1) * largest_crew_hours_over) / (beta * largest_crew_hours_over + 1)
 
-        reward = revenue - (penalty_budget + penalty_emission + penalty_pilot + penalty_crew)
+        normalized_revenue = revenue / max_revenue
+
+        reward = 5 * normalized_revenue - (
+                1.0 * penalty_budget +
+                1.0 * penalty_emission +
+                0.5 * penalty_pilot +
+                0.5 * penalty_crew
+        )
 
         flight_features = np.stack([
             scheduled_flags,
