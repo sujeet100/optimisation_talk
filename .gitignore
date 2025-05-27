@@ -15,3 +15,5 @@ tests/**/*.json
 dist
 
 *.lp
+
+optimisation/reinforcement_learning/ppo_logs/
