@@ -223,8 +223,22 @@ class FlightSchedulingEnv(gym.Env):
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        obs_dim = (
-            self.num_flights * 6 + 1 + self.num_pilots + self.num_crew + 1
-        )
-        self.state = np.zeros(obs_dim, dtype=np.float32)
+
+        self.current_flight = 0
+        self.total_revenue = 0
+        self.total_cost = 0
+        self.total_emissions = 0
+
+        self.pilot_hours = np.array(self.data["logged_hours_pilot"]).copy()
+        self.crew_hours = np.array(self.data["logged_hours_crew"]).copy()
+        self.used_pilots = set()
+        self.used_crew = set()
+        self.scheduled_flights = np.zeros(self.num_flights)  # Track scheduled flights
+
+        # Also clear processed_flights if you use it
+        if hasattr(self, "processed_flights"):
+            self.processed_flights.clear()
+
+        self._update_state()
+
         return self.state, {}
