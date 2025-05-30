@@ -387,7 +387,12 @@ def print_solution(best_solution):
                           (problem.flights['duration'][i] ** problem.constraints["emission_exponent"])
                           for i in range(problem.n_flights))
     avg_emissions = total_emissions / problem.n_flights if problem.n_flights > 0 else 0
+    total_cost = sum(problem.aircraft['cost'][genome[i * 6]] +
+                     (problem.pilots['salary_per_hour'][genome[i*6 +1]] + problem.pilots['salary_per_hour'][genome[i*6 +2]]) * problem.flights['duration'][i] +
+                     (problem.crew['salary_per_hour'][genome[i*6 +3]] + problem.crew['salary_per_hour'][genome[i*6 +4]] + problem.crew['salary_per_hour'][genome[i*6 +5]]) * problem.flights['duration'][i]
+                     for i in range(problem.n_flights))
     print(f"\nAverage Emissions for Best Solution: {avg_emissions:.2f} gms of carbon per km")
+    print(f"\n Total Cost of Scheduled Flights from Best Solution: {total_cost: .2f}")
 
 
 # Run the optimization
