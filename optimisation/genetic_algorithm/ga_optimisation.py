@@ -1,5 +1,6 @@
 import random
 
+import numpy as np
 import matplotlib.pyplot as plt
 from leap_ec import Individual
 from leap_ec.decoder import IdentityDecoder
