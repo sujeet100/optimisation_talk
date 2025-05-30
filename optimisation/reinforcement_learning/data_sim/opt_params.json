@@ -1,1 +1,1 @@
-{"num_flights": 50, "num_aircraft": 80, "num_pilots": 120, "num_crew": 190, "max_hours_pilot": 8, "max_hours_crew": 8, "max_allowed_avg_emission": 180, "budget_cap": 1000000}
+{"num_flights": 50, "num_aircraft": 80, "num_pilots": 120, "num_crew": 190, "max_hours_pilot": 8, "max_hours_crew": 8, "max_allowed_avg_emission": 2000, "budget_cap": 500000}
