@@ -28,7 +28,7 @@ check_env(FlightSchedulingEnv(data), warn=True)
 # Define and train PPO model
 model = PPO("MlpPolicy", env, verbose=1, tensorboard_log=log_dir, learning_rate=1e-5, n_steps=2048, batch_size=64,
             ent_coef=0.01)
-model.learn(total_timesteps=100000)
+model.learn(total_timesteps=1000000)
 
 # Save model
 model.save("ppo_flight_scheduler")

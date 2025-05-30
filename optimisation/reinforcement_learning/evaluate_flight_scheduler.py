@@ -182,6 +182,7 @@ def visualize_episode_with_overuse(env, episode_log):
     plt.tight_layout()
     plt.show()
 
+
 # Main evaluation code
 def main():
     # Load data and environment
@@ -228,6 +229,13 @@ def main():
         episode_log.append((eval_env.envs[0].current_flight - 1, action, reward, info))
 
     print(episode_log)
+
+    emissions_per_flight = [entry[3][0]['emissions'] for entry in episode_log]
+    cost_per_flight = [entry[3][0]['total_cost'] for entry in episode_log]
+    reward_per_flight = [entry[2] for entry in episode_log]
+
+    print(f'Summary: Total reward: {sum(reward_per_flight)}; Total cost of operation: {sum(cost_per_flight)}; '
+          f'Average carbon emission: {sum(emissions_per_flight)/num_flights}')
     visualize_episode_with_overuse(eval_env, episode_log)
 
 
