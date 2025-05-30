@@ -3,9 +3,11 @@ import random
 import matplotlib.pyplot as plt
 from leap_ec import Individual
 from leap_ec.decoder import IdentityDecoder
+from prettytable import PrettyTable
+
 from visualizations import visualize_solution
 
-from genetic_algorithm.data_generator import simulate_data
+from data_generator import simulate_data
 
 
 class FlightSchedulingProblem:
@@ -328,18 +330,39 @@ def run_flight_scheduling_optimization():
     return best_individual, best_fitness_history
 
 
+def print_solution(best_solution):
+    # Print the best solution
+    print("\nBest Solution Genome:", best_solution.genome)
+    print("Best Solution Fitness:", best_solution.fitness)
+    # Create a table for the results using prettytable
+    print("\n📊 Optimized Flight Assignment Summary:")
+    result_table = PrettyTable()
+    result_table.field_names = ["Flight ID", "Aircraft ID", "Pilot 1 ID", "Pilot 2 ID", "Crew 1 ID", "Crew 2 ID",
+                                "Crew 3 ID"]
+    for i in range(problem.n_flights):
+        base_idx = i * 6
+        aircraft = genome[base_idx]
+        pilot1 = genome[base_idx + 1]
+        pilot2 = genome[base_idx + 2]
+        crew1 = genome[base_idx + 3]
+        crew2 = genome[base_idx + 4]
+        crew3 = genome[base_idx + 5]
+        result_table.add_row([i + 1, aircraft, pilot1, pilot2, crew1, crew2, crew3])
+    print(result_table)
+    # print average emission for the best solution
+    total_emissions = sum(problem.aircraft['emission_rate'][genome[i * 6]] *
+                          (problem.flights['duration'][i] ** problem.constraints["emission_exponent"])
+                          for i in range(problem.n_flights))
+    avg_emissions = total_emissions / problem.n_flights if problem.n_flights > 0 else 0
+    print(f"\nAverage Emissions for Best Solution: {avg_emissions:.2f} gms of carbon per km")
+
+
 # Run the optimization
 if __name__ == "__main__":
     best_solution, fitness_history = run_flight_scheduling_optimization()
 
     genome = best_solution.genome
-    print(f"\nBest solution assignments:")
-    for i in range(problem.n_flights):
-        base_idx = i * 6
-        aircraft = genome[base_idx]
-        pilots = [genome[base_idx + 1], genome[base_idx + 2]]
-        crew = [genome[base_idx + 3], genome[base_idx + 4], genome[base_idx + 5]]
-        print(f"Flight {i + 1}: Aircraft {aircraft}, Pilots {pilots}, Crew {crew}")
+    print_solution(best_solution)
 
     # Visualize results
     visualize_solution(best_solution, problem, fitness_history)
