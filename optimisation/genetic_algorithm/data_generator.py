@@ -40,14 +40,3 @@ def simulate_data(num_flights, num_aircraft, num_pilots, num_crew):
     }
 
     return flights_data, aircraft_data, pilot_data, crew_data
-
-    # return {
-    #     "Ri": Ri,
-    #     "Di": Di,
-    #     "Cj": Cj,
-    #     "Ej": Ej,
-    #     "Sm_p": Sm_p,
-    #     "Hm_p": Hm_p,
-    #     "Sn_c": Sn_c,
-    #     "Hn_c": Hn_c
-    # }

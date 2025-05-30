@@ -120,7 +120,7 @@ class FlightSchedulingProblem:
         # Calculate constraint violations and penalties
         penalties = 0
 
-        # Constraint 5: Average emission constraint
+        # Constraint: Average emission constraint (hard)
         total_emissions = sum(self.aircraft['emission_rate'][aircraft_assignments[i]] *
                               (self.flights['duration'][i] ** self.constraints["emission_exponent"])
                               for i in range(self.n_flights))
@@ -129,13 +129,13 @@ class FlightSchedulingProblem:
         if avg_emissions > self.constraints['avg_emission_max']:
             penalties += 1000 * (avg_emissions - self.constraints['avg_emission_max'])
 
-        # Constraint 6: Budget constraint (soft)
+        # Constraint: Budget constraint (soft)
         if total_cost > self.constraints['budget']:
             budget_overrun = max(0, total_cost - self.constraints['budget'])
             alpha = self.constraints['lambda_budget']
             penalties += ((alpha + 1) * (budget_overrun)) / (alpha * budget_overrun + 1)
 
-        # Constraint 7: Working hours constraints (soft)
+        # Constraint: Working hours constraints (soft)
         for p_idx in range(self.n_pilots):
             total_pilot_hours = self.pilots['logged_hours'][p_idx] + pilot_hours[p_idx]
             if total_pilot_hours > self.constraints['max_hours_pilot']:
@@ -156,14 +156,13 @@ class FlightSchedulingProblem:
             pilots_for_flight = [pilot1_assignments[i], pilot2_assignments[i]]
             if len(set(pilots_for_flight)) != len(pilots_for_flight):
                 penalties += 10000  # Heavy penalty for duplicate pilots
-
             # Check crew duplicates
             crew_for_flight = [crew1_assignments[i], crew2_assignments[i], crew3_assignments[i]]
             if len(set(crew_for_flight)) != len(crew_for_flight):
                 penalties += 10000  # Heavy penalty for duplicate crew
 
         fitness = base_objective - penalties
-        return fitness
+        return fitness, {'avg_emissions': avg_emissions, 'total_cost': total_cost}
 
 
 def custom_mutate(individual, mutation_rate=0.1):
@@ -226,11 +225,11 @@ def run_flight_scheduling_optimization():
     flights_data, aircraft_data, pilot_data, crew_data = simulate_data(num_flights, num_aircraft, num_pilots, num_crew)
 
     constraints = {
-        'budget': 50000,  # B
+        'budget': 500000,  # B
         'max_hours_pilot': 8,  # Hp
         'max_hours_crew': 8,  # Hc
         'emission_exponent': 1.5,
-        'avg_emission_max': 1000,  # Eavg_max
+        'avg_emission_max': 2000,  # Eavg_max
         'lambda_budget': 0.5,  # Budget penalty weight
         'lambda_work': 0.5  # Work hours penalty weight
     }
@@ -245,22 +244,23 @@ def run_flight_scheduling_optimization():
 
     # Set up the evolutionary algorithm
     pop_size = 100
-    generations = 50
+    generations = 5000
 
     # Create initial population
     population = [create_individual() for _ in range(pop_size)]
 
     # Evaluate initial population
     for individual in population:
-        individual.fitness = problem.evaluate_fitness(individual)
+        individual.fitness, cost_and_emission = problem.evaluate_fitness(individual)
 
     # Evolution parameters
     tournament_size = 3
     mutation_rate = 0.1
     crossover_rate = 0.8
 
-    # Track best fitness over generations
+    # Track best fitness and attributes over generations
     best_fitness_history = []
+    cost_and_emission_history = []
 
     # Run evolution
     for generation in range(generations):
@@ -288,16 +288,25 @@ def run_flight_scheduling_optimization():
             else:
                 offspring.append(custom_mutate(parents[i], mutation_rate))
 
+        attributes = []
+        index = 0
         # Evaluate offspring
         for individual in offspring:
-            individual.fitness = problem.evaluate_fitness(individual)
+            individual.fitness, attr = problem.evaluate_fitness(individual)
+            attributes.append(attr)
 
         # Replace population
         population = offspring[:pop_size]
 
         # Track progress
         best_fitness = max(ind.fitness for ind in population)
+        best_index = max(
+            enumerate(population),
+            key=lambda x: x[1].fitness
+        )
+
         best_fitness_history.append(best_fitness)
+        cost_and_emission_history.append(attributes[best_index[0]])
 
         if generation % 10 == 0:
             print(f"Generation {generation}: Best fitness = {best_fitness:.2f}")
@@ -320,10 +329,30 @@ def run_flight_scheduling_optimization():
 
     # Plot fitness evolution
     plt.figure(figsize=(10, 6))
-    plt.plot(best_fitness_history)
+    plt.plot(np.convolve(best_fitness_history, np.ones(100)/100, mode='valid'))
     plt.title('Best Fitness Evolution')
     plt.xlabel('Generation')
     plt.ylabel('Fitness')
+    plt.grid(True)
+    plt.show()
+
+    # Plot cost evolution
+    plt.figure(figsize=(10, 6))
+    plt.plot([list(d.values())[1] for d in cost_and_emission_history])
+    plt.axhline(y=constraints['budget'], color='red', linestyle='--', label='Budget')
+    plt.title('Cost of flights over generations')
+    plt.xlabel('Generation')
+    plt.ylabel('Total Cost')
+    plt.grid(True)
+    plt.show()
+
+    # Plot carbon emission evolution
+    plt.figure(figsize=(10, 6))
+    plt.plot([list(d.values())[0] for d in cost_and_emission_history])
+    plt.axhline(y=constraints['avg_emission_max'], color='red', linestyle='--', label='Maximum allowed carbon emission')
+    plt.title('Carbon emission of flights over generations')
+    plt.xlabel('Generation')
+    plt.ylabel('Average emission')
     plt.grid(True)
     plt.show()
 
