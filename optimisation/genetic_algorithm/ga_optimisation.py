@@ -161,6 +161,9 @@ class FlightSchedulingProblem:
             crew_for_flight = [crew1_assignments[i], crew2_assignments[i], crew3_assignments[i]]
             if len(set(crew_for_flight)) != len(crew_for_flight):
                 penalties += 10000  # Heavy penalty for duplicate crew
+        # Check aircraft duplicates
+        if len(set(aircraft_assignments)) != len(aircraft_assignments):
+            penalties += 100000
 
         fitness = base_objective - penalties
         return fitness, {'avg_emissions': avg_emissions, 'total_cost': total_cost}
