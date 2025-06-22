@@ -230,12 +230,8 @@ def main():
 
     print(episode_log)
 
-    emissions_per_flight = [entry[3][0]['emissions'] for entry in episode_log]
-    cost_per_flight = [entry[3][0]['total_cost'] for entry in episode_log]
-    reward_per_flight = [entry[2] for entry in episode_log]
-
-    print(f'Summary: Total reward: {sum(reward_per_flight)}; Total cost of operation: {sum(cost_per_flight)}; '
-          f'Average carbon emission: {sum(emissions_per_flight)/num_flights}')
+    print(f'Summary: Total reward: {episode_log[-1][2]}; Total cost of operation: {episode_log[-1][3][0]['total_cost']}; '
+          f'Average carbon emission: {episode_log[-1][3][0]['emissions']}')
     visualize_episode_with_overuse(eval_env, episode_log)
 
 

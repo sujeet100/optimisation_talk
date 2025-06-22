@@ -16,6 +16,7 @@ numpy = "^2.2.6"
 seaborn = "^0.13.2"
 leap-ec = "^0.8.2"
 tensorboard = "^2.19.0"
+ray = {extras = ["rllib"], version = "^2.47.1"}
 
 [build-system]
 requires = ["poetry-core"]
